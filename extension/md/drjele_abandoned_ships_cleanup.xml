@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mdscript name="DrJele_AbandonedShipsCleanup" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="md.xsd">
+  <cues>
+
+    <!--
+      Configuration. Re-read on every savegame load, so editing a value below and reloading is
+      enough - no new game required. Each one can also be overridden at runtime without touching
+      this file, by setting the matching global variable:
+        <set_value name="global.$DrJeleAbandonedShipLifetime" exact="30min"/>
+    -->
+    <cue name="Configuration" instantiate="true" namespace="static">
+      <conditions>
+        <event_cue_signalled cue="md.Setup.Start"/>
+      </conditions>
+      <actions>
+        <set_value name="$Lifetime"       exact="5h"    comment="game time an abandoned ship survives once the mod has seen it"/>
+        <set_value name="$ScanInterval"   exact="5min"  comment="game time between two galaxy scans"/>
+        <set_value name="$GameStartGrace" exact="60s"   comment="ships spawned before this point were placed while the universe was generated and are never touched"/>
+        <set_value name="$StaleGap"       exact="15min" comment="gap between two sightings after which the clock restarts instead of expiring"/>
+        <set_value name="$BatchSize"      exact="100"   comment="ships evaluated per tick"/>
+        <set_value name="$DebugChance"    exact="0"     comment="100 writes progress to the debug log"/>
+        <debug_text text="'DrJele cleanup: configuration loaded, lifetime %s, scan every %s'.[$Lifetime, $ScanInterval]" chance="$DebugChance"/>
+      </actions>
+    </cue>
+
+    <!--
+      Per-ship clocks live here rather than on the ships themselves: X4 refuses to attach script
+      variables to a plain ship component ("Failed to set component.{...}.$var"), so the state is
+      a table keyed by object, which is the idiom vanilla uses in md/lib_generic.xml.
+      $Clock.{$ship} == [first seen abandoned, last seen abandoned]
+    -->
+    <cue name="State">
+      <actions>
+        <set_value name="$Clock" exact="table[]"/>
+        <set_value name="$NextScanTime" exact="0s"/>
+      </actions>
+    </cue>
+
+    <cue name="Scan" namespace="this" checkinterval="15s">
+      <conditions>
+        <check_value value="Configuration.$Lifetime?"/>
+        <check_value value="State.$NextScanTime?"/>
+        <check_value value="player.age ge State.$NextScanTime" comment="checkinterval alone does not throttle a cue that resets itself, so the schedule is explicit"/>
+        <check_value value="player.galaxy.macro == macro.xu_ep2_universe_macro" comment="main galaxy only - leaves Timelines scenarios, tutorials and the workshop untouched"/>
+      </conditions>
+      <actions>
+        <set_value name="State.$NextScanTime" exact="player.age + Configuration.$ScanInterval"/>
+        <set_value name="$Lifetime" exact="if global.$DrJeleAbandonedShipLifetime? then global.$DrJeleAbandonedShipLifetime else Configuration.$Lifetime"/>
+        <find_ship_by_true_owner name="$Candidates" faction="faction.ownerless"
+                                 space="player.galaxy" multiple="true"
+                                 excluded="global.$IgnoredAbandonedShips"
+                                 docked="false" unit="false" masstraffic="false"
+                                 invulnerable="false" indestructible="false">
+          <match class="class.ship_xs" negate="true"/>
+          <match class="class.spacesuit" negate="true"/>
+          <match state="componentstate.wreck" negate="true"/>
+          <match_context class="class.highway" negate="true"/>
+        </find_ship_by_true_owner>
+        <do_if value="not @$Candidates.count">
+          <set_value name="$Candidates" exact="[]"/>
+        </do_if>
+        <set_value name="$DestroyedThisPass" exact="0"/>
+        <debug_text text="'DrJele cleanup: evaluating %s abandoned ships, %s clocks held'.[$Candidates.count, State.$Clock.keys.count]" chance="Configuration.$DebugChance"/>
+      </actions>
+      <cues>
+        <!-- Batched, so a galaxy holding a thousand derelicts never costs a whole frame at once. -->
+        <cue name="ProcessBatch">
+          <delay exact="1s"/>
+          <actions>
+            <do_all exact="[$Candidates.count, Configuration.$BatchSize].min">
+              <set_value name="$ship" exact="$Candidates.{$Candidates.count}"/>
+              <remove_value name="$Candidates.{$Candidates.count}"/>
+              <do_if value="@$ship.exists and $ship.isownerless
+                            and $ship.spawntime ge Configuration.$GameStartGrace
+                            and not $ship.ismission
+                            and not $ship.hasbeenrenamed
+                            and not @$ship.boardingoperations.count
+                            and not @$ship.salvageclaimants.count">
+                <!--
+                  A gap between two sightings larger than $StaleGap means the ship was claimed and
+                  abandoned again in between, so the clock restarts instead of expiring at once.
+                -->
+                <do_if value="@State.$Clock.{$ship} and (player.age - State.$Clock.{$ship}.{2}) le Configuration.$StaleGap">
+                  <set_value name="State.$Clock.{$ship}" exact="[State.$Clock.{$ship}.{1}, player.age]"/>
+                </do_if>
+                <do_else>
+                  <set_value name="State.$Clock.{$ship}" exact="[player.age, player.age]"/>
+                </do_else>
+
+                <!-- Never pop a ship out of existence in front of the player; retried next pass. -->
+                <do_if value="@State.$Clock.{$ship} and (player.age - State.$Clock.{$ship}.{1}) ge $Lifetime and $ship.attention lt attention.visible">
+                  <debug_text text="'DrJele cleanup: destroying %s %s in %s, abandoned for %s'.[$ship.idcode, $ship.knownname, @$ship.sector.knownname, player.age - State.$Clock.{$ship}.{1}]" chance="Configuration.$DebugChance"/>
+                  <destroy_object object="$ship" explosion="true"/>
+                  <remove_value name="State.$Clock.{$ship}"/>
+                  <set_value name="$DestroyedThisPass" operation="add"/>
+                </do_if>
+              </do_if>
+            </do_all>
+            <do_if value="$Candidates.count">
+              <reset_cue cue="this"/>
+            </do_if>
+            <do_else>
+              <!-- Drop clocks for ships that are gone or no longer show up in the scan. -->
+              <do_all exact="State.$Clock.keys.count" counter="$i" reverse="true">
+                <set_value name="$key" exact="State.$Clock.keys.list.{$i}"/>
+                <do_if value="not @$key.exists or (player.age - State.$Clock.{$key}.{2}) gt Configuration.$StaleGap">
+                  <remove_value name="State.$Clock.{$key}"/>
+                </do_if>
+              </do_all>
+              <debug_text text="'DrJele cleanup: pass finished, %s ships destroyed, %s clocks held'.[$DestroyedThisPass, State.$Clock.keys.count]" chance="Configuration.$DebugChance"/>
+              <reset_cue cue="Scan"/>
+            </do_else>
+          </actions>
+        </cue>
+      </cues>
+    </cue>
+
+  </cues>
+</mdscript>
