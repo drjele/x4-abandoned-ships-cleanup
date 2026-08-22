@@ -8,8 +8,9 @@ This mod puts an expiry clock on abandoned ships and blows them up when it runs 
 are supposed to be there — the free ships placed at game start, story and mission derelicts,
 wrecks you are salvaging, anything you are currently boarding — are left alone.
 
-**Requires X4: Foundations 9.00.** No DLC required, and no dependency on other mods. Works on an
-existing savegame, and removing it leaves nothing behind.
+**Requires X4: Foundations 9.00.** No DLC required, and no hard dependency on other mods. Works on
+an existing savegame. Removing it again takes the script and all of its per-ship bookkeeping with
+it; the only trace left in the save is the pair of inert global variables the options menu writes.
 
 ## Install
 
@@ -82,6 +83,7 @@ They are re-read on every savegame load, so editing one and reloading is enough 
 | Value | Default | Meaning |
 |---|---|---|
 | `$Lifetime` | `5h` | Game time an abandoned ship survives once the mod has seen it. Game time, so SETA speeds it up |
+| `$ScanInterval` | `5min` | Game time between two galaxy scans. Automatically shortened to a fifth of the lifetime, never below 30s, so a short lifetime stays accurate |
 | `$GameStartGrace` | `60s` | Ships spawned before this point count as game-start placements |
 | `$StaleGap` | `15min` | Gap between two sightings after which the clock restarts instead of expiring |
 | `$BatchSize` | `100` | Ships evaluated per tick |
@@ -128,9 +130,10 @@ ships.
 | Steady state | the same 6 keep being scanned and never clocked; a ship that bailed during the test got its own clock and was destroyed 122s later |
 | Script errors | none |
 
-The 122–133s spread is just scan granularity: a ship is destroyed on the first pass after its
-clock expires, so with the default 5h lifetime and 5min scan interval the real lifetime is 5h to
-5h05m.
+The 122–133s spread is scan granularity: a ship dies on the first scan after its clock expires,
+so the scan interval is the error bar on the lifetime. That is why the interval is capped at a
+fifth of the lifetime — at the 5h default it stays 5min, and a 5min lifetime scans every minute
+instead of turning into "somewhere between 5 and 10 minutes".
 
 Not yet proven across a long play session. If you find a ship it should have spared, that is the
 interesting bug and I want to hear about it.

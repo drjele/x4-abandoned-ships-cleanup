@@ -17,7 +17,7 @@
       unit of an option must never change under a $id that has already shipped - give it a new
       one instead. That is why this id carries its unit.
     -->
-    <cue name="RegisterOptions" instantiate="true">
+    <cue name="RegisterOptions" instantiate="true" version="1">
       <conditions>
         <event_cue_signalled cue="md.Simple_Menu_Options.Reloaded"/>
       </conditions>
