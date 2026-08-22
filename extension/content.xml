@@ -12,4 +12,5 @@
           description="Puts an expiry timer on abandoned (ownerless) ships and destroys them when it runs out, sparing the ships placed at game start, story and mission derelicts, wrecks and anything currently being boarded or salvaged."
     />
     <dependency version="900"/>
+    <dependency id="ws_2042901274" optional="true" name="SirNukes Mod Support APIs" comment="only for the in-game options menu; the mod works without it"/>
 </content>

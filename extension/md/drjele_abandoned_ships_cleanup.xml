@@ -7,6 +7,8 @@
       enough - no new game required. Each one can also be overridden at runtime without touching
       this file, by setting the matching global variable:
         <set_value name="global.$DrJeleAbandonedShipLifetime" exact="30min"/>
+      Those globals are also what the in-game options menu writes - see
+      drjele_abandoned_ships_cleanup_options.xml.
     -->
     <cue name="Configuration" instantiate="true" namespace="static">
       <conditions>
@@ -46,6 +48,7 @@
       <actions>
         <set_value name="State.$NextScanTime" exact="player.age + Configuration.$ScanInterval"/>
         <set_value name="$Lifetime" exact="if global.$DrJeleAbandonedShipLifetime? then global.$DrJeleAbandonedShipLifetime else Configuration.$Lifetime"/>
+        <set_value name="$DebugChance" exact="if global.$DrJeleAbandonedShipDebugChance? then global.$DrJeleAbandonedShipDebugChance else Configuration.$DebugChance"/>
         <find_ship_by_true_owner name="$Candidates" faction="faction.ownerless"
                                  space="player.galaxy" multiple="true"
                                  excluded="global.$IgnoredAbandonedShips"
@@ -60,7 +63,7 @@
           <set_value name="$Candidates" exact="[]"/>
         </do_if>
         <set_value name="$DestroyedThisPass" exact="0"/>
-        <debug_text text="'DrJele cleanup: evaluating %s abandoned ships, %s clocks held'.[$Candidates.count, State.$Clock.keys.count]" chance="Configuration.$DebugChance"/>
+        <debug_text text="'DrJele cleanup: evaluating %s abandoned ships, %s clocks held'.[$Candidates.count, State.$Clock.keys.count]" chance="Scan.$DebugChance"/>
       </actions>
       <cues>
         <!-- Batched, so a galaxy holding a thousand derelicts never costs a whole frame at once. -->
@@ -89,7 +92,7 @@
 
                 <!-- Never pop a ship out of existence in front of the player; retried next pass. -->
                 <do_if value="@State.$Clock.{$ship} and (player.age - State.$Clock.{$ship}.{1}) ge $Lifetime and $ship.attention lt attention.visible">
-                  <debug_text text="'DrJele cleanup: destroying %s %s in %s, abandoned for %s'.[$ship.idcode, $ship.knownname, @$ship.sector.knownname, player.age - State.$Clock.{$ship}.{1}]" chance="Configuration.$DebugChance"/>
+                  <debug_text text="'DrJele cleanup: destroying %s %s in %s, abandoned for %s'.[$ship.idcode, $ship.knownname, @$ship.sector.knownname, player.age - State.$Clock.{$ship}.{1}]" chance="Scan.$DebugChance"/>
                   <destroy_object object="$ship" explosion="true"/>
                   <remove_value name="State.$Clock.{$ship}"/>
                   <set_value name="$DestroyedThisPass" operation="add"/>
@@ -107,7 +110,7 @@
                   <remove_value name="State.$Clock.{$key}"/>
                 </do_if>
               </do_all>
-              <debug_text text="'DrJele cleanup: pass finished, %s ships destroyed, %s clocks held'.[$DestroyedThisPass, State.$Clock.keys.count]" chance="Configuration.$DebugChance"/>
+              <debug_text text="'DrJele cleanup: pass finished, %s ships destroyed, %s clocks held'.[$DestroyedThisPass, State.$Clock.keys.count]" chance="Scan.$DebugChance"/>
               <reset_cue cue="Scan"/>
             </do_else>
           </actions>

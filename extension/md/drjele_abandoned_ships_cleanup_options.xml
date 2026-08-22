@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  In-game options, through SirNukes Mod Support APIs. Everything that touches that API lives in
+  this file, so if the API is not installed nothing here ever runs and the mod keeps working off
+  the constants in drjele_abandoned_ships_cleanup.xml.
+
+  Both callbacks only ever write the global override variables the main script already reads, so
+  the cleanup logic itself knows nothing about menus.
+-->
+<mdscript name="DrJele_AbandonedShipsCleanupOptions" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="md.xsd">
+  <cues>
+
+    <!--
+      The API stores an option's value in the savegame under its $id, and hands it straight back
+      to the widget as its start value. A stored value outside the slider's range fails widget
+      validation and takes the whole Extension Options menu down with it, so the range and the
+      unit of an option must never change under a $id that has already shipped - give it a new
+      one instead. That is why this id carries its unit.
+    -->
+    <cue name="RegisterOptions" instantiate="true">
+      <conditions>
+        <event_cue_signalled cue="md.Simple_Menu_Options.Reloaded"/>
+      </conditions>
+      <actions>
+        <signal_cue_instantly
+          cue="md.Simple_Menu_Options.Register_Option"
+          param="table[
+            $id        = 'drjele_abandoned_ship_lifetime_min',
+            $category  = 'Abandoned Ships Cleanup',
+            $name      = 'Abandoned ship lifetime',
+            $mouseover = 'Minutes an abandoned ship survives after the mod first sees it. Game time, so SETA speeds it up.',
+            $type      = 'slidercell',
+            $default   = 300,
+            $args      = table[$min = 5, $max = 300, $step = 5, $suffix = ' min'],
+            $callback  = OnLifetimeChanged,
+            ]"/>
+        <signal_cue_instantly
+          cue="md.Simple_Menu_Options.Register_Option"
+          param="table[
+            $id        = 'drjele_abandoned_ship_debug',
+            $category  = 'Abandoned Ships Cleanup',
+            $name      = 'Debug logging',
+            $mouseover = 'Writes every scan and every destruction to the debug log.',
+            $type      = 'button',
+            $default   = 0,
+            $callback  = OnDebugChanged,
+            ]"/>
+      </actions>
+    </cue>
+
+    <!-- The slider is in plain minutes; useTimeFormat would relabel them as hours. -->
+    <cue name="OnLifetimeChanged" instantiate="true">
+      <conditions>
+        <event_cue_signalled/>
+      </conditions>
+      <actions>
+        <set_value name="global.$DrJeleAbandonedShipLifetime" exact="event.param.$value * 1min"/>
+      </actions>
+    </cue>
+
+    <cue name="OnDebugChanged" instantiate="true">
+      <conditions>
+        <event_cue_signalled/>
+      </conditions>
+      <actions>
+        <set_value name="global.$DrJeleAbandonedShipDebugChance" exact="if event.param.$value then 100 else 0"/>
+      </actions>
+    </cue>
+
+  </cues>
+</mdscript>

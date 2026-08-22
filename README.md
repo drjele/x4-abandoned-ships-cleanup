@@ -59,6 +59,22 @@ positives, no false negatives.
 
 ## Configuration
 
+### In game
+
+If [SirNukes Mod Support APIs](https://steamcommunity.com/sharedfiles/filedetails/?id=2042901274)
+is installed, **Extension Options → Abandoned Ships Cleanup** gets two entries: the ship lifetime
+in minutes (5 to 300, in steps of 5) and a debug logging toggle. Changes apply from the next scan
+— no reload.
+
+The dependency is optional and declared as such. Without it the mod behaves exactly the same, just
+configured by the file below instead. Everything that touches the API lives in its own script,
+[`drjele_abandoned_ships_cleanup_options.xml`](extension/md/drjele_abandoned_ships_cleanup_options.xml),
+which simply writes the same global variables the file below already honours.
+
+Settings are stored in the savegame, so each save carries its own.
+
+### In the file
+
 The values live at the top of
 [`extension/md/drjele_abandoned_ships_cleanup.xml`](extension/md/drjele_abandoned_ships_cleanup.xml).
 They are re-read on every savegame load, so editing one and reloading is enough — no new game.
@@ -71,11 +87,12 @@ They are re-read on every savegame load, so editing one and reloading is enough 
 | `$BatchSize` | `100` | Ships evaluated per tick |
 | `$DebugChance` | `0` | Set to `100` to log every pass and every destruction |
 
-The lifetime can also be changed at runtime, without editing the file, from a cheat menu or any
-other mod:
+Two of them can also be overridden at runtime, without editing the file, from a cheat menu or any
+other mod. These are the same variables the options menu writes:
 
 ```xml
 <set_value name="global.$DrJeleAbandonedShipLifetime" exact="30min"/>
+<set_value name="global.$DrJeleAbandonedShipDebugChance" exact="100"/>
 ```
 
 ## How it works
