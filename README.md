@@ -1,13 +1,8 @@
 # Abandoned Ships Cleanup for X4: Foundations
 
 Abandoned ships never go away in X4. Every pilot that bails leaves a hull floating in space
-forever, and after a long game there are a lot of them. Measured in a 35-day save on 9.00:
-
-| | |
-|---|---|
-| Ownerless ships in the galaxy | **1154** |
-| Of which Xenon hulls left over from combat | 1148 |
-| Worst sector | 441 in a single one |
+forever, so a long-running game accumulates them without limit — well over a thousand is normal,
+most of them combat leftovers, and many of them cluttering the map.
 
 This mod puts an expiry clock on abandoned ships and blows them up when it runs out. Ships that
 are supposed to be there — the free ships placed at game start, story and mission derelicts,
@@ -22,8 +17,9 @@ existing savegame, and removing it leaves nothing behind.
 ./install.sh
 ```
 
-That copies `extension/` into `X4 Foundations/extensions/drjele_abandoned_ships_cleanup`. If
-the game is somewhere else:
+That finds your X4 installation — the usual Steam layouts including extra library folders — and
+copies `extension/` into `X4 Foundations/extensions/drjele_abandoned_ships_cleanup`. If it cannot find
+the game, or you want a different copy of it, point it there yourself:
 
 ```bash
 X4_PATH="/path/to/X4 Foundations" ./install.sh
@@ -56,9 +52,10 @@ pops out of existence in front of you — it is simply retried on the next pass.
 ### Why `spawntime` rather than a list of ship macros
 
 Every ship placed during universe generation has `spawntime == 0`, so one numeric comparison
-covers the base game and every DLC without hardcoding a single macro name. Verified on a real
-save: of 1154 ownerless ships, exactly 7 have `spawntime < 60s` — the six vanilla claimable ships
-plus the Timelines Xenon B in Antigone Memorial. No false positives, no false negatives.
+covers the base game and every DLC without hardcoding a single macro name, and keeps working for
+DLCs that do not exist yet. Checked against a savegame: of the ownerless ships present, the only
+ones under the threshold were the vanilla claimable ships and a Timelines placement — no false
+positives, no false negatives.
 
 ## Configuration
 
@@ -94,20 +91,24 @@ clock restarts instead of expiring the moment it is seen.
 
 ## Debugging
 
-Launch X4 with `-debug all -logfile debuglog.txt` and set `$DebugChance` to `100`. The log lands
-in `~/.config/EgoSoft/X4/<id>/debuglog.txt` (under the Steam snap:
-`~/snap/steam/common/.config/EgoSoft/X4/<id>/`).
+Set `$DebugChance` to `100` and add `-debug scripts -logfile debuglog.txt` to the game's launch
+options. `scripts` rather than `all`: `debug_text` writes on the `scripts` channel by default, and
+`all` buries it under everything else.
+
+The log is written to the X4 user directory, next to your savegames — `Documents/Egosoft/X4/<id>/`
+on Windows, `~/.config/EgoSoft/X4/<id>/` on Linux (or under `~/snap/...` for the Steam snap).
 
 ## Status
 
-Working, verified in game on 9.00 against a 35-day save holding 1157 abandoned ships.
+Working, verified in game on 9.00 in a long-running savegame that had accumulated 1157 abandoned
+ships.
 
 | Check | Result |
 |---|---|
 | Ships cleaned | 1151 in a single pass |
 | Ships spared | 6 — exactly the vanilla claimable ships, by the `spawntime` rule |
 | Timer honoured | destroyed after 122–133s against a 120s test lifetime; never early |
-| Steady state | the same 6 keep being scanned and never clocked; a ship that bailed mid-test got its own clock and was destroyed 122s later |
+| Steady state | the same 6 keep being scanned and never clocked; a ship that bailed during the test got its own clock and was destroyed 122s later |
 | Script errors | none |
 
 The 122–133s spread is just scan granularity: a ship is destroyed on the first pass after its
