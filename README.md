@@ -135,8 +135,24 @@ so the scan interval is the error bar on the lifetime. That is why the interval 
 fifth of the lifetime — at the 5h default it stays 5min, and a 5min lifetime scans every minute
 instead of turning into "somewhere between 5 and 10 minutes".
 
-Not yet proven across a long play session. If you find a ship it should have spared, that is the
-interesting bug and I want to hear about it.
+Also run unattended for 29 hours straight, with a deliberately short 5 minute lifetime so the
+whole cycle repeated constantly:
+
+| Check | Result |
+|---|---|
+| Scans | 1692, spaced 61.1–62.0s apart (mean 61.34) — the interval never drifted |
+| Ships expired | 42, every one of them after 306.3–307.4s against a 300s lifetime; never early |
+| Clock table | never held more than 3 entries; 3006 scans held none at all, so nothing leaks |
+| Candidates per scan | 6 almost always — the game-start ships — rising to 9 when crews had just bailed |
+| Script errors | none |
+| Debug log | 0.55 MiB per day at that cadence, and a fifth of that at the default settings |
+
+The 1-second spread on a 61-second scan interval is not luck: a ship's clock starts on the scan
+that first sees it, so its lifetime is always a whole number of scan intervals — here five of
+them, 306.5s.
+
+If you find a ship it should have spared, that is the interesting bug and I want to hear about
+it.
 
 ## Legal
 
