@@ -32,6 +32,42 @@ It copies rather than symlinks on purpose: X4 only enumerates real directories u
 `extensions/`, and silently ignores a symlink placed there. So re-run `./install.sh` after every
 edit. `./install.sh --uninstall` removes it again.
 
+## Publishing to the Steam Workshop
+
+Egosoft does not publish from inside the game. Uploads go through `WorkshopTool`, shipped in the
+**X Tools** package — Steam app 282160, `steam://install/282160`. It is a Windows executable, so on
+Linux `publish.sh` runs it through Proton: plain wine cannot reach the native Steam client that
+Steamworks needs. Steam has to be running and logged in with an account that owns X4 either way.
+
+```bash
+./publish.sh publish                    # first upload
+./publish.sh update "what changed"      # every upload after that
+```
+
+`X_TOOLS_PATH` and `PROTON_PATH` override the automatic lookup, the same way `X4_PATH` does.
+
+After the first upload the item exists but is **hidden**. Open the URL the script prints, accept
+the Steam Workshop Legal Agreement, and set the visibility to public. Title and description come
+from `name` and `description` in `content.xml` and can be edited on Steam afterwards.
+
+`version` in `content.xml` is an integer, the version times a hundred — `100` is 1.00, `250` would
+be 2.50. Bump it before an update, or pass `-minor` to the tool for a change that does not deserve
+a version.
+
+### Why the extension id is not in the repo twice
+
+`WorkshopTool` writes the id Steam hands back into `content.xml`, as `ws_<number>`, because that is
+how a later `update` knows which item to touch. Letting that land in the repo would be a bug: a
+manual install would then claim the same extension id as a Workshop subscription, and X4 would see
+one extension where there are two.
+
+So the repo keeps the readable `drjele_abandoned_ships_cleanup`, the number lives on its own in
+`steam/workshop-id`, and `publish.sh` substitutes it only into the copy it stages inside the game —
+putting the local install back with `./install.sh` when it is done. Commit `steam/workshop-id`
+after the first publish; without it `./publish.sh update` refuses to run.
+
+For the same reason, do not subscribe to your own Workshop item while you have the manual install.
+
 ## What it spares
 
 The clock is only ever started on a ship that passes every one of these:
