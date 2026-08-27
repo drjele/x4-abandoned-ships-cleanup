@@ -35,9 +35,8 @@ edit. `./install.sh --uninstall` removes it again.
 ## Publishing to the Steam Workshop
 
 Egosoft does not publish from inside the game. Uploads go through `WorkshopTool`, shipped in the
-**X Tools** package — Steam app 282160, `steam://install/282160`. It is a Windows executable, so on
-Linux `publish.sh` runs it through Proton: plain wine cannot reach the native Steam client that
-Steamworks needs. Steam has to be running and logged in with an account that owns X4 either way.
+**X Tools** package — Steam app 282160, `steam://install/282160`. Steam has to be running and
+logged in with an account that owns X4.
 
 ```bash
 ./publish.sh publish                    # first upload
@@ -46,9 +45,49 @@ Steamworks needs. Steam has to be running and logged in with an account that own
 
 `X_TOOLS_PATH` and `PROTON_PATH` override the automatic lookup, the same way `X4_PATH` does.
 
-After the first upload the item exists but is **hidden**. Open the URL the script prints, accept
-the Steam Workshop Legal Agreement, and set the visibility to public. Title and description come
-from `name` and `description` in `content.xml` and can be edited on Steam afterwards.
+`WorkshopTool` is a Windows executable, which makes the two platforms differ enough to be worth
+spelling out.
+
+### On Windows
+
+The path of least resistance. Install X Tools from **Library → Tools**; pressing Play opens a
+command prompt already sitting in the tool's directory. `publish.sh` recognises Git Bash, MSYS and
+Cygwin and runs the executable directly — no Proton, no path translation:
+
+```bash
+./publish.sh publish
+```
+
+The game does not have to be installed on that machine, only owned on the Steam account. Without it
+`publish.sh` has nothing to locate, so point `X4_PATH` at any directory that has an `extensions`
+subdirectory and let it stage there, or skip the script and call the tool by hand from the prompt X
+Tools opened:
+
+```
+WorkshopTool publishx4 -path "C:\path\to\repo\extension" -preview "C:\path\to\repo\extension\preview.jpg" -buildcat
+WorkshopTool update    -path "C:\path\to\repo\extension" -buildcat -changenote "what changed"
+```
+
+By hand, the id write-back is yours to deal with: the tool rewrites `id` in that `content.xml`, so
+copy the number into `steam/workshop-id` and put `id="drjele_abandoned_ships_cleanup"` back before
+committing. See below for why that matters.
+
+### On Linux
+
+`publish.sh` runs the executable through Proton — plain wine cannot reach the native Steam client
+that Steamworks talks to — and translates the staging path to `Z:\...` for it. Any Proton version
+in any Steam library will do; Experimental is preferred when present.
+
+Two things make this the rougher road: Proton has to be installed at all (it is not, if you only
+ever run native Linux games — X4 is one), and a Steam installed as a snap adds its own confinement
+between the tool and the client. If it does not go through, the Windows route above is the fix, not
+a workaround.
+
+### After the first upload
+
+The item exists but is **hidden**. Open the URL the script prints, accept the Steam Workshop Legal
+Agreement, and set the visibility to public. Title and description come from `name` and
+`description` in `content.xml` and can be edited on Steam afterwards.
 
 `version` in `content.xml` is an integer, the version times a hundred — `100` is 1.00, `250` would
 be 2.50. Bump it before an update, or pass `-minor` to the tool for a change that does not deserve
