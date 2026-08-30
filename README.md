@@ -1,5 +1,9 @@
 # Abandoned Ships Cleanup for X4: Foundations
 
+<p align="center">
+  <img src="extension/preview.jpg" alt="Abandoned Ships Cleanup" width="512">
+</p>
+
 Abandoned ships never go away in X4. Every pilot that bails leaves a hull floating in space forever, so a long-running game accumulates them without limit — well over a thousand is normal, most of them combat leftovers, and many of them cluttering the map.
 
 This mod puts an expiry clock on abandoned ships and blows them up when it runs out. Ships that are supposed to be there — the free ships placed at game start, story and mission derelicts, wrecks you are salvaging, anything you are currently boarding — are left alone.
