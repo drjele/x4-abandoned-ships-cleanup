@@ -2,14 +2,6 @@
 <mdscript name="DrJele_AbandonedShipsCleanup" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="md.xsd">
     <cues>
 
-        <!--
-          Configuration. Re-read on every savegame load, so editing a value below and reloading is
-          enough - no new game required. Each one can also be overridden at runtime without touching
-          this file, by setting the matching global variable:
-            <set_value name="global.$DrJeleAbandonedShipLifetime" exact="30min"/>
-          Those globals are also what the in-game options menu writes - see
-          drjele_abandoned_ships_cleanup_options.xml.
-        -->
         <cue name="Configuration" instantiate="true" namespace="static" version="1">
             <conditions>
                 <event_cue_signalled cue="md.Setup.Start"/>
@@ -25,12 +17,6 @@
             </actions>
         </cue>
 
-        <!--
-          Per-ship clocks live here rather than on the ships themselves: X4 refuses to attach script
-          variables to a plain ship component ("Failed to set component.{...}.$var"), so the state is
-          a table keyed by object, which is the idiom vanilla uses in md/lib_generic.xml.
-          $Clock.{$ship} == [first seen abandoned, last seen abandoned]
-        -->
         <cue name="State" version="1">
             <actions>
                 <set_value name="$Clock" exact="table[]"/>
@@ -43,15 +29,10 @@
                 <check_value value="Configuration.$Lifetime?"/>
                 <check_value value="State.$NextScanTime?"/>
                 <check_value value="player.age ge State.$NextScanTime" comment="checkinterval alone does not throttle a cue that resets itself, so the schedule is explicit"/>
-                <check_value value="player.galaxy.macro == macro.xu_ep2_universe_macro" comment="main galaxy only - leaves Timelines scenarios, tutorials and the workshop untouched"/>
+                <check_value value="macro.xu_ep2_universe_macro == player.galaxy.macro" comment="main galaxy only - leaves Timelines scenarios, tutorials and the workshop untouched"/>
             </conditions>
             <actions>
                 <set_value name="$Lifetime" exact="if global.$DrJeleAbandonedShipLifetime? then global.$DrJeleAbandonedShipLifetime else Configuration.$Lifetime"/>
-                <!--
-                  A ship dies on the first scan after its clock expires, so the scan interval is the error
-                  bar on the lifetime. Keep it small enough to stay a fifth of it, or a five minute
-                  lifetime would really mean five to ten.
-                -->
                 <set_value name="State.$NextScanTime" exact="player.age + [[Configuration.$ScanInterval, $Lifetime / 5].min, 30s].max"/>
                 <set_value name="$DebugChance" exact="if global.$DrJeleAbandonedShipDebugChance? then global.$DrJeleAbandonedShipDebugChance else Configuration.$DebugChance"/>
                 <find_ship_by_true_owner name="$Candidates" faction="faction.ownerless"
@@ -84,10 +65,6 @@
                             and not $ship.hasbeenrenamed
                             and not @$ship.boardingoperations.count
                             and not @$ship.salvageclaimants.count">
-                                <!--
-                                  A gap between two sightings larger than $StaleGap means the ship was claimed and
-                                  abandoned again in between, so the clock restarts instead of expiring at once.
-                                -->
                                 <do_if value="@State.$Clock.{$ship} and (player.age - State.$Clock.{$ship}.{2}) le Configuration.$StaleGap">
                                     <set_value name="State.$Clock.{$ship}" exact="[State.$Clock.{$ship}.{1}, player.age]"/>
                                 </do_if>

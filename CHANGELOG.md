@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Changed
+
+- Standardize repository settings, development checks, code style and documentation.
+
 ## [v1.0.0] - 2026-08-30 - Initial release
 
 ### Added

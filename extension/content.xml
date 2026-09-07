@@ -4,7 +4,7 @@
          description="Puts an expiry timer on abandoned (ownerless) ships and destroys them when it runs out, sparing the ships placed at game start, story and mission derelicts, wrecks and anything currently being boarded or salvaged."
          author="drjele"
          version="100"
-         date="2026-08-22"
+         date="2026-08-30"
          save="0"
 >
     <text language="44"

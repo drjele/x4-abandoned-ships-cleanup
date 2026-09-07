@@ -1,29 +1,15 @@
 #!/usr/bin/env bash
-# Publishes the extension to the Steam Workshop for X4: Foundations (app 392160).
-#
-#   ./publish.sh publish                    first upload
-#   ./publish.sh update "what changed"      subsequent uploads, changenote is mandatory
-#
-# Egosoft does this with WorkshopTool, shipped in the "X Tools" package - Steam app 282160,
-# steam://install/282160. It is a Windows executable, so on Linux it is run through Proton: plain
-# wine cannot reach the native Steam client that Steamworks needs. Steam has to be running and
-# logged in either way.
-#
-# The tool writes the Workshop id it gets back into content.xml. That id must not end up in the
-# repo copy - a manual install would then claim the same extension id as a Workshop subscription
-# and X4 would see the two as one. So the repo keeps the readable id, steam/workshop-id keeps the
-# numeric one, and the substitution happens only in the copy staged inside the game.
-#
-# Overrides: X4_PATH, X_TOOLS_PATH, PROTON_PATH.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=lib/find_x4.sh
 source "$REPO_ROOT/lib/find_x4.sh"
 
 WORKSHOP_ID_FILE="$REPO_ROOT/steam/workshop-id"
 
-die() { echo "$*" >&2; exit 1; }
+die() {
+    echo "$*" >&2
+    exit 1
+}
 
 usage() {
     cat >&2 <<'USAGE'
@@ -37,12 +23,12 @@ USAGE
 COMMAND="${1:-}"
 case "$COMMAND" in
     publish)
-        [[ $# -eq 1 ]] || usage
+        [[ 1 -eq $# ]] || usage
         [[ -f "$WORKSHOP_ID_FILE" ]] \
             && die "$WORKSHOP_ID_FILE already exists - the item is published, use: ./publish.sh update \"...\""
         ;;
     update)
-        [[ $# -eq 2 && -n "${2:-}" ]] || usage
+        [[ 2 -eq $# && -n "${2:-}" ]] || usage
         CHANGENOTE="$2"
         [[ -f "$WORKSHOP_ID_FILE" ]] \
             || die "no $WORKSHOP_ID_FILE - nothing has been published yet, use: ./publish.sh publish"
@@ -50,69 +36,69 @@ case "$COMMAND" in
     *) usage ;;
 esac
 
-# WorkshopTool.exe, out of the X Tools package.
 find_workshop_tool() {
-    local candidate
+    local TOOL_CANDIDATE
     if [[ -n "${X_TOOLS_PATH:-}" ]]; then
         if [[ -f "$X_TOOLS_PATH" ]]; then
             printf '%s\n' "$X_TOOLS_PATH"
             return 0
         fi
-        candidate="$X_TOOLS_PATH/WorkshopTool.exe"
-        [[ -f "$candidate" ]] || return 1
-        printf '%s\n' "$candidate"
+        TOOL_CANDIDATE="$X_TOOLS_PATH/WorkshopTool.exe"
+        [[ -f "$TOOL_CANDIDATE" ]] || return 1
+        printf '%s\n' "$TOOL_CANDIDATE"
         return 0
     fi
-    local dir
-    dir="$(find_in_libraries "X Tools")" || return 1
-    candidate="$(find "$dir" -maxdepth 2 -iname 'WorkshopTool.exe' -print -quit)"
-    [[ -n "$candidate" ]] || return 1
-    printf '%s\n' "$candidate"
+    local TOOL_DIRECTORY
+    TOOL_DIRECTORY="$(find_in_libraries "X Tools")" || return 1
+    TOOL_CANDIDATE="$(find "$TOOL_DIRECTORY" -maxdepth 2 -iname 'WorkshopTool.exe' -print -quit)"
+    [[ -n "$TOOL_CANDIDATE" ]] || return 1
+    printf '%s\n' "$TOOL_CANDIDATE"
 }
 
-# Newest Proton in any Steam library. Only used off Windows.
 find_proton() {
     if [[ -n "${PROTON_PATH:-}" ]]; then
         [[ -x "$PROTON_PATH/proton" ]] || return 1
         printf '%s\n' "$PROTON_PATH"
         return 0
     fi
-    local library best=""
-    while IFS= read -r library; do
-        local dir
-        for dir in "$library"/steamapps/common/Proton*; do
-            [[ -x "$dir/proton" ]] || continue
-            best="$dir"
-            [[ "$dir" == *Experimental* ]] && { printf '%s\n' "$dir"; return 0; }
+    local LIBRARY_DIRECTORY PROTON_CANDIDATE=""
+    while IFS= read -r LIBRARY_DIRECTORY; do
+        local TOOL_DIRECTORY
+        for TOOL_DIRECTORY in "$LIBRARY_DIRECTORY"/steamapps/common/Proton*; do
+            [[ -x "$TOOL_DIRECTORY/proton" ]] || continue
+            PROTON_CANDIDATE="$TOOL_DIRECTORY"
+            [[ "$TOOL_DIRECTORY" == *Experimental* ]] && {
+                printf '%s\n' "$TOOL_DIRECTORY"
+                return 0
+            }
         done
     done < <(steam_libraries)
-    [[ -n "$best" ]] || return 1
-    printf '%s\n' "$best"
+    [[ -n "$PROTON_CANDIDATE" ]] || return 1
+    printf '%s\n' "$PROTON_CANDIDATE"
 }
 
 steam_root() {
-    local library
-    while IFS= read -r library; do
-        printf '%s\n' "$library"
+    local LIBRARY_DIRECTORY
+    while IFS= read -r LIBRARY_DIRECTORY; do
+        printf '%s\n' "$LIBRARY_DIRECTORY"
         return 0
     done < <(steam_libraries)
     return 1
 }
 
-# Proton maps the host root at Z:, so /a/b becomes Z:\a\b.
 win_path() {
     printf 'Z:%s\n' "${1//\//\\}"
 }
 
-if ! GAME_PATH="$(find_x4)"; then
+GAME_PATH="$(find_x4)" || {
     die "could not find an X4: Foundations installation - set X4_PATH to point at it"
-fi
+}
 [[ -d "$GAME_PATH/extensions" ]] || die "no extensions directory at $GAME_PATH/extensions"
 
-if ! TOOL="$(find_workshop_tool)"; then
+TOOL="$(find_workshop_tool)" || {
     die "could not find WorkshopTool.exe - install the X Tools package (steam://install/282160),
 or set X_TOOLS_PATH to the directory holding it"
-fi
+}
 
 EXTENSION_ID="$(extension_id "$REPO_ROOT/extension/content.xml")"
 [[ -n "$EXTENSION_ID" ]] || die "could not read the extension id out of extension/content.xml"
@@ -123,56 +109,53 @@ echo "game:  $GAME_PATH"
 echo "tool:  $TOOL"
 echo "stage: $STAGE"
 
-# Stage a clean copy of the extension inside the game, then swap in the Workshop id if we have one.
 rm -rf -- "$STAGE"
 mkdir -p -- "$STAGE"
 cp -r -- "$REPO_ROOT/extension/." "$STAGE/"
 
 if [[ -f "$WORKSHOP_ID_FILE" ]]; then
-    WORKSHOP_ID="$(tr -cd '0-9' < "$WORKSHOP_ID_FILE")"
+    WORKSHOP_ID="$(tr -cd '0-9' <"$WORKSHOP_ID_FILE")"
     [[ -n "$WORKSHOP_ID" ]] || die "$WORKSHOP_ID_FILE holds no digits"
     sed -i "s/id=\"$EXTENSION_ID\"/id=\"ws_$WORKSHOP_ID\"/" "$STAGE/content.xml"
     echo "item:  ws_$WORKSHOP_ID"
 fi
 
-# The tool is interactive - it asks before uploading - so it inherits this terminal untouched.
 run_tool() {
     case "$(uname -s)" in
-        MINGW*|MSYS*|CYGWIN*|Windows_NT)
-            ( cd "$(dirname "$TOOL")" && ./"$(basename "$TOOL")" "$@" )
+        MINGW* | MSYS* | CYGWIN* | Windows_NT)
+            (cd "$(dirname "$TOOL")" && ./"$(basename "$TOOL")" "$@")
             ;;
         *)
-            local proton steam prefix
-            proton="$(find_proton)" \
+            local PROTON_DIRECTORY STEAM_DIRECTORY COMPATIBILITY_DIRECTORY
+            PROTON_DIRECTORY="$(find_proton)" \
                 || die "could not find Proton - install any Proton version from Steam, or set PROTON_PATH"
-            steam="$(steam_root)"
-            prefix="$(dirname "$(dirname "$TOOL")")/../compatdata/282160"
-            mkdir -p -- "$prefix"
-            echo "proton: $proton"
-            STEAM_COMPAT_CLIENT_INSTALL_PATH="$steam" \
-            STEAM_COMPAT_DATA_PATH="$(cd "$prefix" && pwd)" \
-                "$proton/proton" run "$TOOL" "$@"
+            STEAM_DIRECTORY="$(steam_root)"
+            COMPATIBILITY_DIRECTORY="$(dirname "$(dirname "$TOOL")")/../compatdata/282160"
+            mkdir -p -- "$COMPATIBILITY_DIRECTORY"
+            echo "proton: $PROTON_DIRECTORY"
+            STEAM_COMPAT_CLIENT_INSTALL_PATH="$STEAM_DIRECTORY" \
+                STEAM_COMPAT_DATA_PATH="$(cd "$COMPATIBILITY_DIRECTORY" && pwd)" \
+                "$PROTON_DIRECTORY/proton" run "$TOOL" "$@"
             ;;
     esac
 }
 
 STAGE_WIN="$(win_path "$STAGE")"
 case "$(uname -s)" in
-    MINGW*|MSYS*|CYGWIN*|Windows_NT) STAGE_WIN="$STAGE" ;;
+    MINGW* | MSYS* | CYGWIN* | Windows_NT) STAGE_WIN="$STAGE" ;;
 esac
 
-if [[ "$COMMAND" == "publish" ]]; then
+if [[ "publish" == "$COMMAND" ]]; then
     run_tool publishx4 -path "$STAGE_WIN" -preview "$STAGE_WIN\\preview.jpg" -buildcat
 else
     run_tool update -path "$STAGE_WIN" -buildcat -changenote "$CHANGENOTE"
 fi
 
-# The tool wrote the item id into the staged content.xml. Keep it, the staged copy is thrown away.
 NEW_ID="$(extension_id "$STAGE/content.xml" | tr -cd '0-9')"
-if [[ "$COMMAND" == "publish" ]]; then
+if [[ "publish" == "$COMMAND" ]]; then
     [[ -n "$NEW_ID" ]] || die "the tool did not write a Workshop id into $STAGE/content.xml - upload failed?"
     mkdir -p -- "$(dirname "$WORKSHOP_ID_FILE")"
-    printf '%s\n' "$NEW_ID" > "$WORKSHOP_ID_FILE"
+    printf '%s\n' "$NEW_ID" >"$WORKSHOP_ID_FILE"
     echo
     echo "published as https://steamcommunity.com/sharedfiles/filedetails/?id=$NEW_ID"
     echo "the item is hidden until you open that page, accept the Steam Workshop Legal Agreement"
@@ -181,6 +164,5 @@ if [[ "$COMMAND" == "publish" ]]; then
     echo "commit the new $WORKSHOP_ID_FILE - ./publish.sh update needs it"
 fi
 
-# Put the local install back to the repo's content.xml, so it does not collide with a subscription.
 "$REPO_ROOT/install.sh" >/dev/null
 echo "local install restored to id=$EXTENSION_ID"
