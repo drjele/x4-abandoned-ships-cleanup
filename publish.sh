@@ -14,12 +14,20 @@ die() {
 usage() {
     cat >&2 <<'USAGE'
 usage:
-  ./publish.sh publish                 first upload of the extension
-  ./publish.sh update "what changed"   update the published item
+  ./publish.sh publish                          first upload of the extension
+  ./publish.sh update "what changed" [option]   update the published item
+
+update options:
+  --minor      the version attribute has not changed since the last upload
+  --namedesc   also push the name and description of content.xml to Steam
+  --readback   overwrite the local content.xml name and description with
+               the ones currently on Steam, instead of uploading anything
 USAGE
     exit 2
 }
 
+MINOR=""
+NAMEDESC=""
 COMMAND="${1:-}"
 case "$COMMAND" in
     publish)
@@ -28,8 +36,18 @@ case "$COMMAND" in
             && die "$WORKSHOP_ID_FILE already exists - the item is published, use: ./publish.sh update \"...\""
         ;;
     update)
-        [[ 2 -eq $# && -n "${2:-}" ]] || usage
+        [[ 2 -le $# && -n "${2:-}" ]] || usage
         CHANGENOTE="$2"
+        shift 2
+        while [[ 0 -lt $# ]]; do
+            case "$1" in
+                --minor) MINOR="-minor" ;;
+                --namedesc) NAMEDESC="up" ;;
+                --readback) NAMEDESC="down" ;;
+                *) usage ;;
+            esac
+            shift
+        done
         [[ -f "$WORKSHOP_ID_FILE" ]] \
             || die "no $WORKSHOP_ID_FILE - nothing has been published yet, use: ./publish.sh publish"
         ;;
@@ -109,6 +127,13 @@ echo "game:  $GAME_PATH"
 echo "tool:  $TOOL"
 echo "stage: $STAGE"
 
+# whatever happens from here on, the local install must not be left holding the
+# staged copy with the Workshop id in it
+restore_local_install() {
+    "$REPO_ROOT/install.sh" >/dev/null && echo "local install restored to id=$EXTENSION_ID"
+}
+trap restore_local_install EXIT
+
 rm -rf -- "$STAGE"
 mkdir -p -- "$STAGE"
 cp -r -- "$REPO_ROOT/extension/." "$STAGE/"
@@ -119,6 +144,35 @@ if [[ -f "$WORKSHOP_ID_FILE" ]]; then
     sed -i "s/id=\"$EXTENSION_ID\"/id=\"ws_$WORKSHOP_ID\"/" "$STAGE/content.xml"
     echo "item:  ws_$WORKSHOP_ID"
 fi
+
+# the tool is a Windows console application: launched through Proton it gets no
+# console of its own and everything it prints is lost, so it is wrapped in a
+# batch file that redirects both streams to a log we can show afterwards
+write_batch_file() {
+    local BATCH_FILE="$1" LOG_FILE="$2"
+    shift 2
+    local LINE ARGUMENT
+    LINE="\"$(win_path "$TOOL")\""
+    for ARGUMENT in "$@"; do
+        ARGUMENT="${ARGUMENT//%/%%}"
+        case "$ARGUMENT" in
+            *[[:space:]]*) LINE="$LINE \"$ARGUMENT\"" ;;
+            *) LINE="$LINE $ARGUMENT" ;;
+        esac
+    done
+    {
+        printf '@echo off\r\n'
+        printf 'cd /d "%s"\r\n' "$(win_path "$(dirname "$TOOL")")"
+        printf '%s > "%s" 2>&1\r\n' "$LINE" "$(win_path "$LOG_FILE")"
+        printf 'exit /b %%ERRORLEVEL%%\r\n'
+    } >"$BATCH_FILE"
+}
+
+# the Steam snap runs with a private /tmp, so the Steam IPC that the tool needs
+# to talk to the client is only reachable from inside the snap mount namespace
+uses_snap_steam() {
+    [[ "$1" == "$HOME/snap/steam/"* ]] && command -v snap >/dev/null 2>&1
+}
 
 run_tool() {
     case "$(uname -s)" in
@@ -132,10 +186,44 @@ run_tool() {
             STEAM_DIRECTORY="$(steam_root)"
             COMPATIBILITY_DIRECTORY="$(dirname "$(dirname "$TOOL")")/../compatdata/282160"
             mkdir -p -- "$COMPATIBILITY_DIRECTORY"
+            COMPATIBILITY_DIRECTORY="$(cd "$COMPATIBILITY_DIRECTORY" && pwd)"
             echo "proton: $PROTON_DIRECTORY"
-            STEAM_COMPAT_CLIENT_INSTALL_PATH="$STEAM_DIRECTORY" \
-                STEAM_COMPAT_DATA_PATH="$(cd "$COMPATIBILITY_DIRECTORY" && pwd)" \
-                "$PROTON_DIRECTORY/proton" run "$TOOL" "$@"
+
+            local BATCH_FILE="$COMPATIBILITY_DIRECTORY/workshoptool.bat"
+            local LOG_FILE="$COMPATIBILITY_DIRECTORY/workshoptool.log"
+            rm -f -- "$LOG_FILE"
+            write_batch_file "$BATCH_FILE" "$LOG_FILE" "$@"
+
+            # Proton discards the exit code of the Windows process and the
+            # wrapper's own status says nothing about it either, so the log the
+            # batch file leaves behind is the only report we get
+            local STATUS=0
+            if uses_snap_steam "$STEAM_DIRECTORY"; then
+                echo "steam:  snap - running the tool inside the snap namespace"
+                local SNAP_SCRIPT
+                SNAP_SCRIPT="$(printf 'export STEAM_COMPAT_CLIENT_INSTALL_PATH=%q\nexport STEAM_COMPAT_DATA_PATH=%q\ncd %q || exit 1\nexec %q run cmd.exe /c %q </dev/null\n' \
+                    "$STEAM_DIRECTORY" "$COMPATIBILITY_DIRECTORY" "$(dirname "$TOOL")" \
+                    "$PROTON_DIRECTORY/proton" "$(win_path "$BATCH_FILE")")"
+                printf '%s' "$SNAP_SCRIPT" | snap run --shell steam >/dev/null 2>&1 || true
+            else
+                (
+                    cd "$(dirname "$TOOL")" || exit 1
+                    STEAM_COMPAT_CLIENT_INSTALL_PATH="$STEAM_DIRECTORY" \
+                        STEAM_COMPAT_DATA_PATH="$COMPATIBILITY_DIRECTORY" \
+                        "$PROTON_DIRECTORY/proton" run cmd.exe /c "$(win_path "$BATCH_FILE")" </dev/null
+                ) >/dev/null 2>&1 || true
+            fi
+
+            echo
+            if [[ -s "$LOG_FILE" ]]; then
+                cat -- "$LOG_FILE"
+                grep -q '^ERROR' -- "$LOG_FILE" && STATUS=1
+            else
+                echo "the tool produced no output - it could not be started" >&2
+                STATUS=1
+            fi
+            rm -f -- "$BATCH_FILE" "$LOG_FILE"
+            return "$STATUS"
             ;;
     esac
 }
@@ -146,9 +234,17 @@ case "$(uname -s)" in
 esac
 
 if [[ "publish" == "$COMMAND" ]]; then
-    run_tool publishx4 -path "$STAGE_WIN" -preview "$STAGE_WIN\\preview.jpg" -buildcat
+    run_tool publishx4 -path "$STAGE_WIN" -preview "$STAGE_WIN\\preview.jpg" -buildcat -batchmode \
+        || die "the upload failed - see the tool output above"
 else
-    run_tool update -path "$STAGE_WIN" -buildcat -changenote "$CHANGENOTE"
+    run_tool update -path "$STAGE_WIN" -preview "$STAGE_WIN\\preview.jpg" -buildcat \
+        -batchmode ${MINOR:+"$MINOR"} ${NAMEDESC:+-namedesc} ${NAMEDESC:+"$NAMEDESC"} \
+        -changenote "$CHANGENOTE" \
+        || die "the update failed - see the tool output above"
+    if [[ "down" == "$NAMEDESC" ]]; then
+        cp -- "$STAGE/content.xml" "$REPO_ROOT/content.xml.steam"
+        echo "steam name and description written to content.xml.steam"
+    fi
 fi
 
 NEW_ID="$(extension_id "$STAGE/content.xml" | tr -cd '0-9')"
@@ -163,6 +259,3 @@ if [[ "publish" == "$COMMAND" ]]; then
     echo
     echo "commit the new $WORKSHOP_ID_FILE - ./publish.sh update needs it"
 fi
-
-"$REPO_ROOT/install.sh" >/dev/null
-echo "local install restored to id=$EXTENSION_ID"
